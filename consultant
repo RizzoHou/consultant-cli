@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""consultant — entrypoint shim. Adds src/ to sys.path then runs cli.main()."""
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "src"))
+
+from cli import _entry  # noqa: E402
+
+sys.exit(_entry())
