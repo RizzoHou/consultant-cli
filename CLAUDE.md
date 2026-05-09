@@ -4,6 +4,8 @@
 
 A small CLI for agents to consult a stronger reasoning model with per-call control of model + effort. Full usage and architecture are in README.md — don't restate them here.
 
+Public on GitHub at `RizzoHou/consultant-cli`, MIT-licensed. Treat README as user-facing; keep the public surface (CLI flags, provider interface) stable across changes.
+
 ## Editing invariants
 
 - **Stdlib only.** No `openai`, `requests`, `litellm`, etc. Reasons: zero install friction; LiteLLM strips DeepSeek's `reasoning_effort` (BerriAI/litellm#27439). If you add a provider, use `urllib`.
