@@ -19,6 +19,7 @@ consultant/
 │   ├── cli.py              # argparse + main loop
 │   ├── inputs.py           # @path resolution, file/image attachments
 │   ├── outputs.py          # stdout/stderr/file sinks
+│   ├── sessions.py         # multi-round session persistence (--session)
 │   └── providers/
 │       ├── __init__.py     # provider registry
 │       └── deepseek.py     # DeepSeek V4 Pro client (raw urllib + SSE)
@@ -26,6 +27,7 @@ consultant/
 │   └── deepseek.key
 ├── prompts/                # optional reusable system prompts
 ├── examples/
+├── sessions/               # gitignored — runtime --session state
 └── .venv/                  # gitignored
 ```
 
@@ -111,6 +113,31 @@ DeepSeek V4 Pro is text-only, so this currently errors. The plumbing is in place
 # from a file
 ./consultant -s prompts/reviewer.md "..."
 ```
+
+### Multi-round sessions
+
+For iterative work — drafting then revising, or following up on an earlier answer — pass `--session NAME` to keep the conversation alive across calls. History persists as JSONL at `sessions/<NAME>.jsonl` (gitignored).
+
+```bash
+# turn 1: starts a new session, sets the system prompt
+./consultant --session draft1 -s prompts/reviewer.md \
+  -o draft.md "draft a 七律 about autumn rain"
+
+# turn 2: continues — system prompt is locked from turn 1, so don't pass -s again
+./consultant --session draft1 \
+  "the third couplet's parallelism feels forced — try again"
+
+# turn 3: more iterations as needed
+./consultant --session draft1 -o final.md \
+  "good, now expand the imagery in lines 5–6"
+```
+
+A few invariants:
+
+- The session file is at `<project>/sessions/<NAME>.jsonl` regardless of cwd — it's resolved relative to the binary's project root, so it works the same whether you call `./consultant` from the project dir or a symlinked `consultant` from anywhere on `$PATH`.
+- The system prompt is locked from turn 1. Passing `-s` on a continuing session is a clear error; to use a different system prompt, start a new session name.
+- Writes are atomic (tmp + rename), so a killed mid-write process can't corrupt history. A truncated final line on read is silently skipped.
+- There is no auto-pick of "the most recent session" — name selection is always explicit. To start fresh, just use a new name.
 
 ## Adding a provider
 
