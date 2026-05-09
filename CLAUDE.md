@@ -1,0 +1,24 @@
+# CLAUDE.md
+
+## What this project is
+
+A small CLI for agents to consult a stronger reasoning model with per-call control of model + effort. Full usage and architecture are in README.md — don't restate them here.
+
+## Editing invariants
+
+- **Stdlib only.** No `openai`, `requests`, `litellm`, etc. Reasons: zero install friction; LiteLLM strips DeepSeek's `reasoning_effort` (BerriAI/litellm#27439). If you add a provider, use `urllib`.
+- **DeepSeek thinking mode needs BOTH fields:** `reasoning_effort` AND `thinking: {type: "enabled"}` in the request body. One alone silently runs in non-thinking mode.
+- **`src/` is not a package.** The `consultant` shim prepends `src/` to `sys.path`, so modules import each other as `from inputs import …`, not `from src.inputs import …`. `src/providers/` IS a package (has `__init__.py`).
+- **Secrets:** `secrets/*` is gitignored except `.gitkeep`. Never commit keys.
+
+## Adding a provider
+
+See README → "Adding a provider". One file in `src/providers/<name>.py`, register in `src/providers/__init__.py`. The class needs `name`, `default_model`, `default_effort`, `valid_efforts`, `supports_images`, `key_env`, `key_file`, and a `stream(messages, model, effort)` generator yielding events of type `content` / `reasoning` / `usage` / `done`.
+
+## Smoke test after edits
+
+```bash
+./consultant -e high "Reply with exactly: PONG"
+```
+
+Expect `PONG` in ~2s. Confirms key loading, request shape, and SSE parsing.
