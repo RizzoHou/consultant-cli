@@ -10,6 +10,8 @@ A small CLI for agents to consult a stronger reasoning model with per-call contr
 - **DeepSeek thinking mode needs BOTH fields:** `reasoning_effort` AND `thinking: {type: "enabled"}` in the request body. One alone silently runs in non-thinking mode.
 - **`src/` is not a package.** The `consultant` shim prepends `src/` to `sys.path`, so modules import each other as `from inputs import …`, not `from src.inputs import …`. `src/providers/` IS a package (has `__init__.py`).
 - **Secrets:** `secrets/*` is gitignored except `.gitkeep`. Never commit keys.
+- **Symlink-safe shim.** The `consultant` entrypoint uses `os.path.realpath(__file__)` to find `src/`, so the binary works when symlinked onto `$PATH` (e.g. `~/.local/bin/consultant`). Don't change this back to `abspath`.
+- **Sessions are project-relative.** `--session NAME` stores JSONL at `<project>/sessions/<NAME>.jsonl` regardless of cwd. Gitignored. The system prompt is locked from turn 1 — passing `-s` on a continuing session is an error.
 
 ## Adding a provider
 
