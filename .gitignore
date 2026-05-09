@@ -2,6 +2,9 @@
 secrets/*
 !secrets/.gitkeep
 
+# multi-round session state (consultant --session NAME)
+sessions/
+
 # python
 .venv/
 __pycache__/

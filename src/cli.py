@@ -8,6 +8,7 @@ from pathlib import Path
 from inputs import build_messages, collect_attachments
 from outputs import make_content_sink, make_reasoning_sink
 from providers import DEFAULT_PROVIDER, get_provider_class
+from sessions import load_session, save_session, session_path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -82,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "for stdout (file outputs still apply).")
     p.add_argument("--key-file", default=None, metavar="PATH",
                    help="Read API key from this file instead of env / secrets/.")
+    p.add_argument("--session", default=None, metavar="NAME",
+                   help="Persist conversation across calls. History stored at "
+                        "sessions/<NAME>.jsonl. The system prompt is locked from "
+                        "turn 1; passing -s on a continuing session is an error.")
     return p
 
 
@@ -95,13 +100,29 @@ def main(argv: list[str] | None = None) -> int:
     raw_prompt = _read_prompt(args.prompt)
     system = _read_system(args.system)
 
+    session_file: Path | None = None
+    session_msgs: list[dict] = []
+    if args.session:
+        session_file = session_path(PROJECT_ROOT / "sessions", args.session)
+        session_msgs = load_session(session_file)
+        if session_msgs and system:
+            raise SystemExit(
+                f"consultant: -s/--system cannot be passed on a continuing session "
+                f"({args.session!r} already has {len(session_msgs)} messages). "
+                "The system prompt is locked from turn 1."
+            )
+
     rewritten, attachments = collect_attachments(raw_prompt, args.file, args.image)
-    messages = build_messages(
+    new_msgs = build_messages(
         user_text=rewritten,
         attachments=attachments,
         system=system,
         supports_images=provider.supports_images,
     )
+    if session_msgs:
+        messages = session_msgs + [new_msgs[-1]]
+    else:
+        messages = new_msgs
 
     model = args.model or provider.default_model
     effort = args.effort or provider.default_effort
@@ -152,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
         }
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2))
         sys.stdout.write("\n")
+
+    if session_file is not None:
+        assistant_msg = {"role": "assistant", "content": "".join(content_buf)}
+        save_session(session_file, messages + [assistant_msg])
 
     return 0
 
