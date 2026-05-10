@@ -27,6 +27,8 @@ consultant/
 │   └── deepseek.key
 ├── prompts/                # optional reusable system prompts
 ├── examples/
+├── skills/                 # Claude Code skill templates that drive `consultant`
+│   └── consult-zh/         # routes Chinese-language work through DeepSeek
 ├── sessions/               # gitignored — runtime --session state
 └── .venv/                  # gitignored
 ```
@@ -138,6 +140,27 @@ A few invariants:
 - The system prompt is locked from turn 1. Passing `-s` on a continuing session is a clear error; to use a different system prompt, start a new session name.
 - Writes are atomic (tmp + rename), so a killed mid-write process can't corrupt history. A truncated final line on read is silently skipped.
 - There is no auto-pick of "the most recent session" — name selection is always explicit. To start fresh, just use a new name.
+
+## Claude Code skills
+
+This repo ships skill templates under `skills/` that teach Claude Code *when* and *how* to call `consultant`. Skills are how Claude Code decides to delegate — without one, it has no reason to reach for this CLI on its own.
+
+Currently bundled:
+
+- **`skills/consult-zh/`** — routes native Chinese-language work (translation, original prose, 诗词/文言文, idiomatic critique) through DeepSeek in a draft+critique flow. Read the skill's frontmatter `description` for trigger conditions.
+
+To install a skill into your Claude Code:
+
+```bash
+# symlink so updates to the repo template flow through automatically
+mkdir -p ~/.claude/skills
+ln -s "$(pwd)/skills/consult-zh" ~/.claude/skills/consult-zh
+
+# or copy if you want to diverge locally
+cp -r skills/consult-zh ~/.claude/skills/
+```
+
+The template assumes the `consultant` binary is on `$PATH` (see Setup). If you change the CLI surface (flags, defaults, output shape), update the skill template in the same change — see `CLAUDE.md`.
 
 ## Adding a provider
 

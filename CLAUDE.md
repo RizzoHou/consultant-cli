@@ -14,6 +14,7 @@ Public on GitHub at `RizzoHou/consultant-cli`, MIT-licensed. Treat README as use
 - **Secrets:** `secrets/*` is gitignored except `.gitkeep`. Never commit keys.
 - **Symlink-safe shim.** The `consultant` entrypoint uses `os.path.realpath(__file__)` to find `src/`, so the binary works when symlinked onto `$PATH` (e.g. `~/.local/bin/consultant`). Don't change this back to `abspath`.
 - **Sessions are project-relative.** `--session NAME` stores JSONL at `<project>/sessions/<NAME>.jsonl` regardless of cwd. Gitignored. The system prompt is locked from turn 1 — passing `-s` on a continuing session is an error.
+- **Skill templates track the CLI.** `skills/<name>/SKILL.md` are the canonical Claude Code skill definitions for this project. When the CLI surface changes (flags, defaults, output shape, new provider, effort levels), reconcile the affected skill in the same task — a skill that references a removed flag will silently misfire at runtime. If the change is purely internal, say so when reporting completion.
 
 ## Adding a provider
 
