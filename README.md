@@ -37,6 +37,8 @@ consultant/
 ├── prompts/                # optional reusable system prompts
 ├── examples/
 ├── skills/                 # Claude Code skill templates that drive `consultant`
+│   ├── consult-reasoning/  # routes hard reasoning through the `reasoning` tag
+│   ├── consult-vision/     # routes image / diagram / art analysis through the `vision` tag
 │   └── consult-zh/         # routes Chinese-language work through the `chinese` tag
 ├── sessions/               # gitignored — runtime --session state
 └── .venv/                  # gitignored
@@ -187,19 +189,25 @@ A few invariants:
 
 This repo ships skill templates under `skills/` that teach Claude Code *when* and *how* to call `consultant`. Skills are how Claude Code decides to delegate — without one, it has no reason to reach for this CLI on its own.
 
-Currently bundled:
+Currently bundled — one skill per capability tag:
 
-- **`skills/consult-zh/`** — routes native Chinese-language work (translation, original prose, 诗词/文言文, idiomatic critique) through DeepSeek in a draft+critique flow. Read the skill's frontmatter `description` for trigger conditions.
+- **`skills/consult-reasoning/`** — routes hard reasoning (architectural tradeoffs, stuck debugging, spec interpretation, math/proof, safety reviews) through the `reasoning` tag. Distinguishes itself from Claude Code's built-in `advisor()` (advisor sees your transcript; this skill briefs a fresh reasoner on a problem you scope).
+- **`skills/consult-vision/`** — routes image-heavy interpretation (dense diagrams, charts, art / visual analysis) through the `vision` tag. The bar for triggering is higher than the other two because Claude is itself multimodal — the skill spells out when delegating actually helps.
+- **`skills/consult-zh/`** — routes native Chinese-language work (translation, original prose, 诗词/文言文, idiomatic critique) through DeepSeek in a draft+critique flow.
 
-To install a skill into your Claude Code:
+Read each skill's frontmatter `description` for the precise trigger and anti-trigger conditions.
+
+To install one (or all) into your Claude Code:
 
 ```bash
 # symlink so updates to the repo template flow through automatically
 mkdir -p ~/.claude/skills
-ln -s "$(pwd)/skills/consult-zh" ~/.claude/skills/consult-zh
+ln -s "$(pwd)/skills/consult-reasoning" ~/.claude/skills/consult-reasoning
+ln -s "$(pwd)/skills/consult-vision"    ~/.claude/skills/consult-vision
+ln -s "$(pwd)/skills/consult-zh"        ~/.claude/skills/consult-zh
 
 # or copy if you want to diverge locally
-cp -r skills/consult-zh ~/.claude/skills/
+cp -r skills/consult-reasoning skills/consult-vision skills/consult-zh ~/.claude/skills/
 ```
 
 The template assumes the `consultant` binary is on `$PATH` (see Setup). If you change the CLI surface (flags, defaults, output shape), update the skill template in the same change — see `CLAUDE.md`.
