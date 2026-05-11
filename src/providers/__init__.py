@@ -1,11 +1,11 @@
 """Provider registry. Add a new provider by registering its class here."""
 from .deepseek import DeepSeekProvider
+from .openrouter import OpenRouterProvider
 
 PROVIDERS = {
     DeepSeekProvider.name: DeepSeekProvider,
+    OpenRouterProvider.name: OpenRouterProvider,
 }
-
-DEFAULT_PROVIDER = DeepSeekProvider.name
 
 
 def get_provider_class(name: str):

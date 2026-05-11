@@ -7,8 +7,9 @@ from pathlib import Path
 
 from inputs import build_messages, collect_attachments
 from outputs import make_content_sink, make_reasoning_sink
-from providers import DEFAULT_PROVIDER, get_provider_class
+from providers import get_provider_class
 from sessions import load_session, save_session, session_path
+from tags import DEFAULT_TAG, TAGS, resolve_tag
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -59,12 +60,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("prompt", nargs="?", default=None,
                    help="The question. If omitted, read from stdin.")
-    p.add_argument("-p", "--provider", default=DEFAULT_PROVIDER,
-                   help=f"Provider name (default: {DEFAULT_PROVIDER}).")
+    p.add_argument("-t", "--tag", default=None,
+                   help=f"Capability tag: {' | '.join(sorted(TAGS))} "
+                        f"(default: {DEFAULT_TAG}). Resolves to a "
+                        f"(provider, model, effort) triple; explicit -p/-m/-e "
+                        f"override individual fields.")
+    p.add_argument("-p", "--provider", default=None,
+                   help="Provider name. Overrides the tag's provider.")
     p.add_argument("-m", "--model", default=None,
-                   help="Model id. Default depends on provider.")
+                   help="Model id. Overrides the tag's model.")
     p.add_argument("-e", "--effort", default=None,
-                   help="Reasoning effort. For deepseek: high|max (default: max).")
+                   help="Reasoning effort. Valid values depend on provider "
+                        "(see README). Overrides the tag's effort.")
     p.add_argument("-s", "--system", default=None,
                    help="System prompt. Inline string or path to a text file.")
     p.add_argument("-f", "--file", action="append", default=[], metavar="PATH",
@@ -93,7 +100,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    provider_cls = get_provider_class(args.provider)
+    # Tag-baseline resolution: a tag fills in defaults; -p/-m/-e override
+    # individually. If neither -t nor -p is passed, the default tag wins.
+    if args.tag:
+        base = resolve_tag(args.tag)
+    elif args.provider is None:
+        base = resolve_tag(DEFAULT_TAG)
+    else:
+        base = {"provider": args.provider, "model": None, "effort": None}
+
+    provider_name = args.provider or base["provider"]
+    provider_cls = get_provider_class(provider_name)
     api_key = _load_key(provider_cls, args.key_file)
     provider = provider_cls(api_key)
 
@@ -124,8 +141,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         messages = new_msgs
 
-    model = args.model or provider.default_model
-    effort = args.effort or provider.default_effort
+    model = args.model or base.get("model") or provider.default_model
+    effort = args.effort or base.get("effort") or provider.default_effort
 
     content_buf: list[str] = []
     reasoning_buf: list[str] = []

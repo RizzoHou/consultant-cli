@@ -6,12 +6,14 @@ tools: Bash, Read, Edit, Write
 
 # consult-zh
 
-Route Chinese-language work to the `consultant` CLI (DeepSeek) in coordination with your own (Opus) judgment. DeepSeek's edge is native Chinese generation and idiom; yours is structural reasoning and editorial discipline. The default workflow plays both to their strengths.
+Route Chinese-language work to the `consultant` CLI's `chinese` tag (which currently resolves to DeepSeek) in coordination with your own (Opus) judgment. DeepSeek's edge is native Chinese generation and idiom; yours is structural reasoning and editorial discipline. The default workflow plays both to their strengths.
+
+The skill always passes `-t chinese` explicitly so the routing survives any future change to the CLI's default tag (today the default is `reasoning`, which goes to OpenAI via OpenRouter — wrong choice for native Chinese).
 
 ## Prerequisites
 
 - The `consultant` binary is on `$PATH` (typically symlinked from your local clone of [consultant-cli](https://github.com/RizzoHou/consultant-cli) — e.g. `ln -s /path/to/consultant-cli/consultant ~/.local/bin/consultant`).
-- A DeepSeek API key is set up per the repo README (`secrets/deepseek.key` or `$DEEPSEEK_API_KEY`).
+- A DeepSeek API key is set up per the repo README (`secrets/deepseek.key` or `$DEEPSEEK_API_KEY`) — the `chinese` tag targets DeepSeek, so this is the key that gets loaded.
 - Sessions persist at `<consultant-project>/sessions/<NAME>.jsonl` regardless of cwd. To inspect: `cat "$(dirname "$(readlink -f "$(which consultant)")")"/sessions/<NAME>.jsonl`.
 
 ## When to trigger
@@ -48,13 +50,13 @@ Tie the output file to the session name so parallel tasks don't collide on `/tmp
 ```bash
 # Turn 1: DeepSeek produces the draft, written to a file
 SLUG=zh-<short-name>     # e.g. zh-poem-autumn, zh-translate-contract-v3
-consultant --session "$SLUG" \
+consultant -t chinese --session "$SLUG" \
   -s "<task-specific system prompt>" \
   -o "/tmp/${SLUG}.md" \
   "<the writing task>"
 ```
 
-The CLI's default effort is `max` — don't pass `-e` unless you have a specific reason to want a lighter, faster pass.
+The `chinese` tag defaults to effort `max` — don't pass `-e` unless you have a specific reason to want a lighter, faster pass.
 
 Then:
 
@@ -63,7 +65,7 @@ Then:
 3. If the draft needs work, send the critique back through the same session:
 
    ```bash
-   consultant --session "$SLUG" \
+   consultant -t chinese --session "$SLUG" \
      -o "/tmp/${SLUG}-v2.md" \
      "Revise based on these notes: <your critique>"
    ```
@@ -75,7 +77,7 @@ Then:
 Produce your draft directly, then send it to DeepSeek for critique:
 
 ```bash
-consultant --session zh-<short-name> \
+consultant -t chinese --session zh-<short-name> \
   "Critique the following Chinese draft for idiom, register, and flow. \
    Be specific — quote phrases that need revision and propose alternatives. \
    Do not produce a full rewrite.
@@ -106,7 +108,7 @@ For literary Chinese specifically (诗词, 文言文), be especially restrained 
 
 The user can override the default with these:
 
-- **Synthesize** ("synthesize / blend / merge two drafts"). Run two parallel `consultant` calls (no `--session`), then produce a hybrid yourself. Warning: prone to tonal inconsistency in literary output — flag this if the user requests it for poetry or fiction.
+- **Synthesize** ("synthesize / blend / merge two drafts"). Run two parallel `consultant -t chinese` calls (no `--session`), then produce a hybrid yourself. Warning: prone to tonal inconsistency in literary output — flag this if the user requests it for poetry or fiction.
 - **Race-and-pick** ("show me both / which is better"). Get DeepSeek's draft, present both yours and DeepSeek's side-by-side, recommend one with reasoning, let the user choose.
 - **Labor-split** ("Opus structure, DeepSeek wording"). Draft the structural skeleton yourself, then send to DeepSeek with: *"Refine the wording while keeping the structure intact. Do not reorganize."*
 
@@ -114,16 +116,16 @@ Do not auto-detect when to use these — they require explicit user instruction.
 
 ## Effort selection
 
-The CLI defaults to `-e max` for DeepSeek — that's the right setting for native Chinese work and the reason DeepSeek is in the loop at all. Don't pass `-e` unless you specifically want to opt down.
+The `chinese` tag defaults to `-e max` for DeepSeek — that's the right setting for native Chinese work and the reason DeepSeek is in the loop at all. Don't pass `-e` unless you specifically want to opt down.
 
-- **Default (`-e max`, implicit):** all drafts, critiques, revisions, classical composition, idiomatic translation.
+- **Default (`-e max`, implicit via the `chinese` tag):** all drafts, critiques, revisions, classical composition, idiomatic translation.
 - **`-e high` (opt-in only):** when you want a quicker, lighter pass and have judged the task too small to justify max effort (e.g. short factual translation, a one-off register check).
 
-When in doubt, leave `-e` off and let the CLI default apply.
+When in doubt, leave `-e` off and let the tag's default apply.
 
 ## Failure modes
 
-- **Missing API key**: CLI exits with a clear error pointing at `secrets/deepseek.key` / `$DEEPSEEK_API_KEY`. Surface the error to the user; do not silently fall back to your own Chinese.
+- **Missing API key**: CLI exits with a clear error pointing at `secrets/deepseek.key` / `$DEEPSEEK_API_KEY` (the `chinese` tag selects DeepSeek, so that's the key looked up). Surface the error to the user; do not silently fall back to your own Chinese.
 - **Network error / timeout**: retry once with the same `--session` (the session preserves history; you don't lose turns). If it fails again, do the task yourself and explicitly tell the user DeepSeek was unavailable.
 - **System prompt lock error** on turn 2+: you tried to pass `-s` on a continuing session. Either drop `-s` (the turn-1 system prompt is still in effect) or start a new session with a new name.
 - **DeepSeek draft is in the wrong register / off-topic**: don't try to fix it editorially. Send a single targeted critique through `--session` and ask for a revision. One round of redirection is cheaper than rewriting yourself.

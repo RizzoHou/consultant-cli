@@ -2,13 +2,19 @@
 
 A small CLI for asking a stronger model for advice. Built so an autonomous agent (Claude Code, a custom harness, etc.) can shell out to a high-effort reasoning model when it needs a second opinion — without inheriting Claude Code's hard-coded Opus advisor.
 
-Designed around three properties:
+Designed around four properties:
 
 - **Per-call control** of model and reasoning effort. Not a session-wide env var.
+- **Capability tags** so callers address *what they need* (`-t reasoning`, `-t chinese`, `-t vision`) rather than a specific provider+model pair.
 - **File and image input** — both as explicit `--file` / `--image` flags and as `@path` references inline in the prompt.
 - **Pipe-friendly by default** — the answer goes to stdout, reasoning stays out of the way.
 
-The first supported provider is **DeepSeek V4 Pro** (effort `high` or `max`). Adding another OpenAI-compatible provider is a single new file under `src/providers/`.
+Supported providers today:
+
+- **OpenRouter** — default. The `reasoning` and `vision` tags route here, currently targeting `openai/gpt-5.5` (effort `minimal | low | medium | high | xhigh`; default `xhigh` on the reasoning tag).
+- **DeepSeek V4 Pro** — the `chinese` tag. Strong native-Chinese generation (effort `high | max`; default `max`).
+
+Adding another OpenAI-compatible provider is a single new file under `src/providers/`.
 
 ## Layout
 
@@ -17,18 +23,21 @@ consultant/
 ├── consultant              # executable entrypoint
 ├── src/
 │   ├── cli.py              # argparse + main loop
+│   ├── tags.py             # capability tag table (reasoning / vision / chinese)
 │   ├── inputs.py           # @path resolution, file/image attachments
 │   ├── outputs.py          # stdout/stderr/file sinks
 │   ├── sessions.py         # multi-round session persistence (--session)
 │   └── providers/
 │       ├── __init__.py     # provider registry
-│       └── deepseek.py     # DeepSeek V4 Pro client (raw urllib + SSE)
+│       ├── deepseek.py     # DeepSeek V4 Pro client (raw urllib + SSE)
+│       └── openrouter.py   # OpenRouter client (raw urllib + SSE)
 ├── secrets/                # gitignored — drop API keys here
-│   └── deepseek.key
+│   ├── deepseek.key
+│   └── openrouter.key
 ├── prompts/                # optional reusable system prompts
 ├── examples/
 ├── skills/                 # Claude Code skill templates that drive `consultant`
-│   └── consult-zh/         # routes Chinese-language work through DeepSeek
+│   └── consult-zh/         # routes Chinese-language work through the `chinese` tag
 ├── sessions/               # gitignored — runtime --session state
 └── .venv/                  # gitignored
 ```
@@ -39,14 +48,44 @@ consultant/
 # venv (no third-party deps; created for project hygiene)
 python3 -m venv .venv
 
-# put your DeepSeek key in secrets/deepseek.key (already done if you ran setup)
+# OpenRouter key (powers the default `reasoning` and `vision` tags)
+echo 'sk-or-v1-...' > secrets/openrouter.key
+chmod 600 secrets/openrouter.key
+
+# DeepSeek key (powers the `chinese` tag) — optional if you only use OpenRouter
 echo 'sk-...' > secrets/deepseek.key
 chmod 600 secrets/deepseek.key
 ```
 
-The CLI loads keys in this order: `--key-file PATH` → `$DEEPSEEK_API_KEY` → `secrets/deepseek.key`.
+The CLI loads each provider's key in this order: `--key-file PATH` → `$<PROVIDER>_API_KEY` env var (`$OPENROUTER_API_KEY` or `$DEEPSEEK_API_KEY`) → `secrets/<provider>.key`.
 
 ## Usage
+
+### Tags
+
+Tags bundle `(provider, model, effort)` so callers address a capability instead of a specific API. The mapping lives in `src/tags.py` — retargeting a tag is a one-line edit and skills/scripts that use it keep working.
+
+| Tag | Provider | Model | Default effort |
+|---|---|---|---|
+| `reasoning` *(default)* | openrouter | `openai/gpt-5.5` | `xhigh` |
+| `vision` | openrouter | `openai/gpt-5.5` | `high` |
+| `chinese` | deepseek | `deepseek-v4-pro` | `max` |
+
+```bash
+# default tag (`reasoning`) — no flag needed
+./consultant "what's the difference between WAL and shadow paging?"
+
+# pick a tag
+./consultant -t chinese  "翻译：The cat sat on the mat."
+./consultant -t vision -i diagram.png  "explain this architecture"
+
+# explicit -p/-m/-e override individual tag fields, in any combo
+./consultant -t reasoning -e high   "ping"   # gpt-5.5 but effort=high
+./consultant -t chinese   -e high   "..."    # DeepSeek but effort=high
+./consultant -p deepseek            "..."    # tag-less; provider defaults apply
+```
+
+Unknown tag → clear error listing what's available.
 
 ### Basics
 
@@ -58,8 +97,9 @@ The CLI loads keys in this order: `--key-file PATH` → `$DEEPSEEK_API_KEY` → 
 cat question.md | ./consultant
 
 # pick effort
-./consultant -e high  "quick check on this idea: ..."
-./consultant -e max   "deep review: ..."          # default
+./consultant -e high   "quick check on this idea: ..."
+./consultant -e xhigh  "deep review: ..."          # OpenRouter / gpt-5.5
+./consultant -t chinese -e max "深度审稿：..."      # DeepSeek max-effort
 ```
 
 ### Attaching files
@@ -81,10 +121,11 @@ Two equivalent ways. Use whichever reads better.
 ### Images
 
 ```bash
-./consultant -i diagram.png "explain this architecture"
+./consultant -i diagram.png "explain this architecture"            # default tag handles vision
+./consultant -t vision -i screenshot.png "what's broken here?"     # same, explicit
 ```
 
-DeepSeek V4 Pro is text-only, so this currently errors. The plumbing is in place for future multimodal providers — each provider declares `supports_images` and the CLI rejects images cleanly when the provider can't handle them.
+The default `reasoning` tag (and the dedicated `vision` tag) point at `openai/gpt-5.5`, which accepts images. Routing through `-t chinese` will reject images because DeepSeek V4 Pro is text-only — each provider declares `supports_images` and the CLI errors cleanly when the chosen provider can't handle them.
 
 ### Where the output goes
 
@@ -137,6 +178,7 @@ For iterative work — drafting then revising, or following up on an earlier ans
 A few invariants:
 
 - The session file is at `<project>/sessions/<NAME>.jsonl` regardless of cwd — it's resolved relative to the binary's project root, so it works the same whether you call `./consultant` from the project dir or a symlinked `consultant` from anywhere on `$PATH`.
+- Sessions persist *messages*, not *tag/provider*. Pass `-t TAG` consistently across turns or you'll silently switch backends mid-conversation (e.g. starting a session with `-t chinese` and continuing without it will route the next turn through the default `reasoning` tag instead).
 - The system prompt is locked from turn 1. Passing `-s` on a continuing session is a clear error; to use a different system prompt, start a new session name.
 - Writes are atomic (tmp + rename), so a killed mid-write process can't corrupt history. A truncated final line on read is silently skipped.
 - There is no auto-pick of "the most recent session" — name selection is always explicit. To start fresh, just use a new name.
@@ -183,7 +225,7 @@ class MyProvider:
         ...
 ```
 
-Then register it in `src/providers/__init__.py`. The CLI does the rest.
+Then register it in `src/providers/__init__.py`. If you want the new provider addressable by capability, add an entry to `TAGS` in `src/tags.py`. The CLI does the rest.
 
 ## Notes on the DeepSeek API
 
@@ -199,3 +241,20 @@ The response splits chain-of-thought from the final answer:
 
 - `choices[0].delta.reasoning_content` → `--show-thinking` / `--thinking-output`
 - `choices[0].delta.content`           → stdout / `-o`
+
+## Notes on the OpenRouter API
+
+OpenRouter uses the unified `reasoning` object (not DeepSeek's `reasoning_effort` + `thinking` pair):
+
+```json
+{"reasoning": {"effort": "xhigh", "enabled": true}}
+```
+
+Valid effort values for `openai/gpt-5.5`: `minimal | low | medium | high | xhigh`. The `reasoning` tag defaults to `xhigh`; the `vision` tag defaults to `high` (vision queries rarely need maximum reasoning, and high is significantly cheaper).
+
+Reasoning tokens on the wire arrive in one of two shapes — the provider handles both:
+
+- `choices[].delta.reasoning` — string passthrough (OpenAI / Anthropic routes).
+- `choices[].delta.reasoning_details[]` — structured array of `{type: "reasoning.text", text, ...}` (the gpt-5.x default via OpenRouter's unified API).
+
+Note: for `openai/gpt-5.5`, OpenAI bills reasoning *tokens* but does not surface raw chain-of-thought text; expect `--show-thinking` to be empty even when `usage.completion_tokens_details.reasoning_tokens > 0`.
