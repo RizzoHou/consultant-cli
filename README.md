@@ -129,6 +129,18 @@ Two equivalent ways. Use whichever reads better.
 
 The default `reasoning` tag (and the dedicated `vision` tag) point at `openai/gpt-5.5`, which accepts images. Routing through `-t chinese` will reject images because DeepSeek V4 Pro is text-only — each provider declares `supports_images` and the CLI errors cleanly when the chosen provider can't handle them.
 
+### PDFs
+
+PDFs are rendered to one PNG per page (150 dpi) and attached as image content blocks. Same provider rules as images apply — text-only providers reject them.
+
+```bash
+./consultant -f paper.pdf "summarize section 3"
+./consultant -t vision -f slides.pdf "which slide mentions latency?"
+./consultant "explain figure 2 in @paper.pdf"          # @path works too
+```
+
+Requires `pdftoppm` on `$PATH` (poppler-utils — `apt install poppler-utils` on Debian/Ubuntu, `brew install poppler` on macOS). A multi-page PDF becomes multiple image blocks in a single user turn; expect rendered-page count and cost to scale with the document. The CLI prints `rendered N pages from <path>` to stderr so you can see what's being uploaded before the model bills you for it.
+
 ### Where the output goes
 
 ```bash

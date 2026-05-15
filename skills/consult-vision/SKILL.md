@@ -1,6 +1,6 @@
 ---
 name: consult-vision
-description: Use when the task hinges on careful interpretation of an image — dense diagrams (architecture, sequence, schematics), charts and data visualizations where precise reading matters, art / visual analysis (composition, technique, iconography, attribution), second opinion on a visual reading you've already done, or sub-agent contexts that don't have the image in scope. Brings OpenRouter's `openai/gpt-5.5` (high effort, image input) into the loop via the `consultant` CLI's `vision` tag. Skip for "what's in this photo," clean OCR, and simple UI screenshots — Claude is itself multimodal and handles those directly.
+description: Use when the task hinges on careful interpretation of an image or PDF page — dense diagrams (architecture, sequence, schematics), charts and data visualizations where precise reading matters, figures inside papers / slide decks delivered as PDFs, art / visual analysis (composition, technique, iconography, attribution), second opinion on a visual reading you've already done, or sub-agent contexts that don't have the file in scope. Brings OpenRouter's `openai/gpt-5.5` (high effort, image input) into the loop via the `consultant` CLI's `vision` tag; PDFs are rendered page-by-page to images automatically. Skip for "what's in this photo," clean OCR, simple UI screenshots, and plain-text PDFs where the words are the point — Claude is itself multimodal and handles those directly.
 tools: Bash, Read, Edit, Write
 ---
 
@@ -17,6 +17,7 @@ The skill always passes `-t vision` explicitly so routing survives any future ta
 - **Art and visual analysis** — composition, technique, iconography, period attribution, comparison across images.
 - **Second opinion on a visual interpretation you've already done** — analogous to `advisor()` but for an image-grounded reading.
 - **Sub-agent contexts that don't carry the image** — when you're orchestrating and need a partner that can see the file directly.
+- **PDF pages where the figure / layout / typography matters** — papers with diagrams, slide decks, anything where rendering the page as an image preserves information that plain text extraction loses.
 
 Do NOT trigger for:
 
@@ -24,6 +25,7 @@ Do NOT trigger for:
 - Clean OCR on text screenshots — Claude handles directly.
 - Simple UI screenshots Claude can read at a glance.
 - Generating images — this CLI does not produce images.
+- Plain-text PDFs (reports, contracts, prose) — `consult-reasoning` with `-f file.pdf` works too, but if the words are all that matter you're better off extracting text yourself (`pdftotext`) and avoiding the per-page image upload.
 
 ## Prerequisites
 
@@ -42,7 +44,18 @@ consultant -t vision -i path/to/diagram.png "Walk me through the data flow."
 consultant -t vision "Compare @left.png and @right.png — what changed?"
 ```
 
-Multiple `-i` flags or `@path` references attach multiple images. Mix with `--file path` for accompanying text (e.g. spec PDF + the diagram, or an artist's bio alongside the painting).
+Multiple `-i` flags or `@path` references attach multiple images. Mix with `--file path` for accompanying text (e.g. a spec alongside the diagram, or an artist's bio alongside the painting).
+
+### PDFs
+
+PDFs are first-class input — attach with `-f path.pdf` or `@path.pdf`. The CLI renders each page to a PNG (150 dpi) and sends them as image content blocks, so multi-page documents Just Work without you converting first. A `rendered N pages from <path>` line goes to stderr so you see the upload size before the model bills for it.
+
+```bash
+consultant -t vision -f paper.pdf "Read figure 3 and walk me through what the curves show."
+consultant -t vision -f slides.pdf "Which slide introduces the latency budget? Quote it."
+```
+
+Use `-f` / `@path` for PDFs — `-i/--image` is reserved for actual image files. Requires `pdftoppm` (poppler-utils) on `$PATH`; the CLI errors with an install hint if it's missing.
 
 ## Choosing your strategy: single-shot vs. multi-round
 
